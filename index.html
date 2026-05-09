@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>이모티콘 투표 시스템 - 완결판</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .stage-card { display: none; }
+        .active { display: block !important; }
+        .admin-only { border: 4px solid #dc2626; padding: 20px; margin-top: 50px; background: #fff1f2; }
+        .vote-card { transition: all 0.2s; border: 4px solid transparent; position: relative; }
+        .vote-card.selected { border-color: #2563eb; background: #eff6ff; transform: translateY(-5px); }
+        .check-badge { display: none; position: absolute; top: 10px; right: 10px; background: #2563eb; color: white; border-radius: 50%; width: 24px; height: 24px; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; z-index: 10; }
+        .vote-card.selected .check-badge { display: flex; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+
+<div id="app" class="max-w-5xl mx-auto bg-white shadow-lg rounded-lg p-6">
+    <!-- 로그인/가입 -->
+    <div id="page-login" class="stage-card active text-center">
+        <h2 class="text-2xl font-bold mb-4">로그인</h2>
+        <div class="space-y-4 max-w-sm mx-auto">
+            <input type="text" id="login-id" placeholder="ID" class="w-full border-2 p-3 rounded-lg outline-blue-500">
+            <input type="password" id="login-pw" placeholder="Password" class="w-full border-2 p-3 rounded-lg outline-blue-500">
+            <button onclick="handleLogin()" class="w-full bg-blue-600 text-white p-4 rounded-xl font-black text-xl hover:bg-blue-700">접속하기</button>
+            <button onclick="showPage('page-register')" class="w-full text-gray-500 text-sm">회원가입</button>
+        </div>
+    </div>
+
+    <div id="page-register" class="stage-card text-center">
+        <h2 class="text-2xl font-bold mb-4">회원가입</h2>
+        <div class="space-y-4 max-w-sm mx-auto">
+            <input type="text" id="reg-id" placeholder="사용할 ID" class="w-full border-2 p-3 rounded-lg">
+            <input type="password" id="reg-pw" placeholder="사용할 Password" class="w-full border-2 p-3 rounded-lg">
+            <button onclick="handleRegister()" class="w-full bg-green-600 text-white p-3 rounded-lg font-bold">가입 완료</button>
+            <button onclick="showPage('page-login')" class="w-full mt-2 text-sm text-gray-400">돌아가기</button>
+        </div>
+    </div>
+
+    <!-- 멤버 영역 -->
+    <div id="page-member" class="stage-card">
+        <div class="flex justify-between items-center mb-6 border-b-2 pb-4 border-gray-100">
+            <h2 id="user-welcome" class="text-xl font-black text-blue-600"></h2>
+            <button onclick="logout()" class="text-red-500 font-bold border-2 border-red-500 px-4 py-1 rounded-full hover:bg-red-50 transition">로그아웃</button>
+        </div>
+        <div id="member-content" class="min-h-[500px]"></div>
+    </div>
+
+    <!-- 관리자 영역 -->
+    <div id="page-admin" class="stage-card admin-only rounded-2xl shadow-xl">
+        <div class="flex justify-between items-center mb-6 border-b-2 border-red-200 pb-4">
+            <h1 class="text-2xl font-black text-red-600">ADMIN CONTROL</h1>
+            <button onclick="logout()" class="bg-red-600 text-white px-6 py-2 rounded-xl font-bold">LOGOUT</button>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-1 bg-white p-5 rounded-2xl shadow border-2">
+                <h3 class="font-black mb-3 text-blue-700 underline">단계 설정 및 데이터 초기화</h3>
+                <select id="stage-select" onchange="updateStage(this.value)" class="w-full border-4 border-blue-500 p-4 rounded-xl font-black text-lg bg-blue-50 mb-4">
+                    <option value="이벤트 대기">이벤트 대기</option>
+                    <option value="투표 등록">투표 등록</option>
+                    <option value="등록 마감">등록 마감</option>
+                    <option value="투표 진행">투표 진행</option>
+                    <option value="투표 마감">투표 마감</option>
+                    <option value="투표 결산">투표 결산</option>
+                </select>
+                <button onclick="resetAllData()" class="w-full bg-red-100 text-red-600 p-3 rounded-lg font-bold border-2 border-red-200 hover:bg-red-600 hover:text-white transition">모든 기록 강제 초기화</button>
+                <p class="text-[10px] text-gray-400 mt-2">* 초기화 시 모든 이미지와 투표가 삭제됩니다.</p>
+            </div>
+            <div class="lg:col-span-2 bg-white p-5 rounded-2xl shadow border-2 overflow-y-auto max-h-[600px]">
+                <h3 class="font-black mb-4 text-red-600 border-b pb-2 text-center">실시간 등록 현황 모니터링</h3>
+                <div id="admin-member-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, getDocs, updateDoc, increment, deleteDoc, query, where, orderBy, addDoc, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCnclFpkD0YcvlESQ4j_IAxmPBcJLMLjsU",
+        authDomain: "emoji-vote.firebaseapp.com",
+        projectId: "emoji-vote",
+        storageBucket: "emoji-vote.firebasestorage.app",
+        messagingSenderId: "925868366683",
+        appId: "1:925868366683:web:b67a481fb9522935ac987e"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const storage = getStorage(app);
+    let currentUser = null;
+    let selectedIds = [];
+
+    window.showPage = (id) => {
+        document.querySelectorAll('.stage-card').forEach(p => p.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    };
+    window.logout = () => location.reload();
+
+    window.handleRegister = async () => {
+        const id = document.getElementById('reg-id').value;
+        const pw = document.getElementById('reg-pw').value;
+        if(!id || !pw) return alert("입력 오류");
+        await setDoc(doc(db, "users", id), { id, pw, role: "member" });
+        alert("가입 성공!"); window.showPage('page-login');
+    };
+
+    window.handleLogin = async () => {
+        const id = document.getElementById('login-id').value;
+        const pw = document.getElementById('login-pw').value;
+        if(id === "infpdavichi" && pw === "8282") {
+            currentUser = { id, role: "admin" };
+            window.showPage('page-admin'); loadAdminData(); return;
+        }
+        const snap = await getDoc(doc(db, "users", id));
+        if(snap.exists() && snap.data().pw === pw) {
+            currentUser = snap.data(); window.showPage('page-member'); startSync();
+        } else alert("로그인 실패");
+    };
+
+    function startSync() {
+        onSnapshot(doc(db, "system", "config"), (snap) => {
+            const stage = snap.data()?.stage || "이벤트 대기";
+            refreshUI(stage);
+        });
+    }
+
+    async function refreshUI(stage) {
+        const container = document.getElementById('member-content');
+        document.getElementById('user-welcome').innerText = `${currentUser.id}님 (${stage})`;
+        container.innerHTML = "";
+
+        if (stage === "투표 등록") {
+            const eSnap = await getDoc(doc(db, "entries", currentUser.id));
+            if (eSnap.exists()) {
+                const d = eSnap.data();
+                container.innerHTML = `<div class="text-center py-10 bg-blue-50 rounded-3xl border-2 border-blue-100"><p class="text-xl font-black text-blue-600 mb-6">등록 완료 (No.${d.order})</p><img src="${d.url}" class="w-64 mx-auto rounded-2xl shadow-2xl mb-6 border-4 border-white"><h3 class="text-2xl font-bold mb-6">${d.emojiName}</h3><button onclick="deleteMyWork()" class="bg-gray-800 text-white px-8 py-3 rounded-xl font-bold">작품 수정/삭제</button></div>`;
+            } else {
+                container.innerHTML = `<div class="max-w-md mx-auto space-y-6 p-10 border-4 border-dashed rounded-3xl bg-white shadow-xl"><h3 class="text-center text-2xl font-black underline">새 작품 등록</h3><input type="text" id="up-name" placeholder="작품 이름" class="w-full border-2 p-4 rounded-xl outline-blue-500 font-bold"><input type="file" id="up-file" class="w-full border p-2" accept="image/*"><button onclick="handleUpload()" id="btn-up" class="w-full bg-blue-600 text-white p-5 rounded-2xl font-black text-xl shadow-lg">업로드</button></div>`;
+            }
+        } else if (stage === "투표 진행") {
+            renderVotePage(container);
+        } else if (stage === "투표 결산") {
+            renderResultPage(container);
+        } else {
+            container.innerHTML = `<div class="flex flex-col items-center justify-center py-32 text-gray-300 font-black text-2xl">[${stage}] 단계 대기 중</div>`;
+        }
+    }
+
+    window.handleUpload = async () => {
+        const name = document.getElementById('up-name').value;
+        const file = document.getElementById('up-file').files[0];
+        if(!name || !file) return alert("내용을 채워주세요.");
+        const btn = document.getElementById('btn-up'); btn.disabled = true;
+
+        const path = `images/${currentUser.id}_${Date.now()}`;
+        const sRef = ref(storage, path);
+        await uploadBytes(sRef, file);
+        const url = await getDownloadURL(sRef);
+        
+        // 순번 계산: 기존 entries의 개수 + 1
+        const snap = await getDocs(collection(db, "entries"));
+        const newOrder = snap.size + 1;
+
+        await setDoc(doc(db, "entries", currentUser.id), { 
+            writerId: currentUser.id, 
+            emojiName: name, 
+            url: url, 
+            storagePath: path, 
+            votes: 0, 
+            order: newOrder,
+            updatedAt: serverTimestamp() 
+        });
+        alert("작품이 등록되었습니다!"); refreshUI("투표 등록");
+    };
+
+    window.deleteMyWork = async () => {
+        if(!confirm("작품을 삭제하시겠습니까? (순번이 재조정될 수 있습니다)")) return;
+        const refEntry = doc(db, "entries", currentUser.id);
+        const snap = await getDoc(refEntry);
+        if(snap.exists()) {
+            const data = snap.data();
+            if(data.storagePath) { try { await deleteObject(ref(storage, data.storagePath)); } catch(e){} }
+            await deleteDoc(refEntry);
+            
+            // 삭제 후 순번 재정렬 (실시간 관리자 갱신을 위해)
+            const allEntries = await getDocs(query(collection(db, "entries"), orderBy("order", "asc")));
+            let idx = 1;
+            for(const docItem of allEntries.docs) {
+                await updateDoc(docItem.ref, { order: idx++ });
+            }
+            alert("삭제 완료!"); refreshUI("투표 등록");
+        }
+    };
+
+    // 투표 단계에서 코멘트 입력 (요청사항 반영)
+    async function renderVotePage(container) {
+        const snap = await getDocs(query(collection(db, "entries"), orderBy("order", "asc")));
+        const vSnap = await getDocs(query(collection(db, "votes"), where("voterId", "==", currentUser.id)));
+        const alreadyVotedIds = vSnap.docs.map(d => d.data().targetId);
+        selectedIds = [...alreadyVotedIds];
+
+        container.innerHTML = `
+            <div class="bg-blue-600 text-white p-4 rounded-2xl shadow-lg mb-8 flex justify-between items-center sticky top-0 z-10">
+                <span class="font-bold">2개를 선택하고 응원 코멘트를 남겨주세요!</span>
+                <span class="bg-white text-blue-600 px-3 py-1 rounded-full font-black" id="count-display">${selectedIds.length}/2</span>
+            </div>
+            <div id="vote-grid" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-24"></div>
+            <div class="fixed bottom-6 left-0 right-0 px-4 max-w-5xl mx-auto z-20">
+                <button id="btn-confirm-vote" class="w-full bg-blue-600 text-white p-5 rounded-2xl font-black text-2xl shadow-2xl">투표 내용 확정하기</button>
+            </div>
+        `;
+
+        const grid = document.getElementById('vote-grid');
+        snap.forEach(d => {
+            const w = d.data();
+            const card = document.createElement('div');
+            card.className = `vote-card rounded-3xl overflow-hidden bg-white shadow-xl p-4 flex flex-col ${selectedIds.includes(d.id) ? 'selected' : ''}`;
+            card.innerHTML = `
+                <div class="check-badge">선택됨</div>
+                <img src="${w.url}" class="w-full h-40 object-cover rounded-2xl mb-4 cursor-pointer" onclick="toggleSelect('${d.id}', this)">
+                <div class="text-center font-black mb-4">No.${w.order} - ${w.emojiName}</div>
+                <div class="mt-auto">
+                    <p class="text-[10px] text-gray-400 mb-1">응원 코멘트 남기기</p>
+                    <textarea id="comm-${d.id}" class="w-full border-2 rounded-xl p-2 text-xs h-16 outline-blue-500" placeholder="작품에 대한 감상을 적어주세요"></textarea>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+
+        window.toggleSelect = (id, el) => {
+            const card = el.closest('.vote-card');
+            if(selectedIds.includes(id)) {
+                selectedIds = selectedIds.filter(v => v !== id);
+                card.classList.remove('selected');
+            } else {
+                if(selectedIds.length >= 2) return alert("최대 2개까지만 가능합니다.");
+                selectedIds.push(id);
+                card.classList.add('selected');
+            }
+            document.getElementById('count-display').innerText = `${selectedIds.length}/2`;
+        };
+
+        document.getElementById('btn-confirm-vote').onclick = async () => {
+            if(selectedIds.length === 0) return alert("최소 1개 이상 선택해주세요.");
+            if(!confirm("이대로 투표와 코멘트를 저장하시겠습니까?")) return;
+            
+            // 1. 기존 투표 삭제 (초기화)
+            for(const oldId of alreadyVotedIds) {
+                await deleteDoc(doc(db, "votes", `${currentUser.id}_${oldId}`));
+                await updateDoc(doc(db, "entries", oldId), { votes: increment(-1) });
+            }
+            // 2. 새 투표 및 코멘트 저장
+            for(const newId of selectedIds) {
+                const commentText = document.getElementById(`comm-${newId}`).value;
+                await setDoc(doc(db, "votes", `${currentUser.id}_${newId}`), { voterId: currentUser.id, targetId: newId });
+                await updateDoc(doc(db, "entries", newId), { votes: increment(1) });
+                if(commentText.trim()) {
+                    await addDoc(collection(db, `entries/${newId}/comments`), { 
+                        user: currentUser.id, 
+                        text: commentText, 
+                        at: serverTimestamp() 
+                    });
+                }
+            }
+            alert("투표와 코멘트가 성공적으로 저장되었습니다!");
+            refreshUI("투표 진행");
+        };
+    }
+
+    async function renderResultPage(container) {
+        const snap = await getDocs(query(collection(db, "entries"), orderBy("votes", "desc")));
+        container.innerHTML = `<h2 class="text-4xl font-black text-center mb-10 underline underline-offset-8">🏆 최종 랭킹 결과</h2><div id="result-list" class="space-y-12"></div>`;
+        const list = document.getElementById('result-list');
+        
+        let rank = 1;
+        for (const d of snap.docs) {
+            const w = d.data();
+            const resDiv = document.createElement('div');
+            resDiv.className = "bg-white p-6 rounded-[2.5rem] shadow-xl border-2 flex flex-col md:flex-row gap-6 items-start";
+            resDiv.innerHTML = `
+                <div class="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xl shadow-lg">${rank++}위</div>
+                <img src="${w.url}" class="w-40 h-40 object-cover rounded-3xl border-4 border-gray-100 shadow-inner">
+                <div class="flex-1 w-full">
+                    <h3 class="text-2xl font-black mb-1">${w.emojiName}</h3>
+                    <p class="text-blue-600 font-bold mb-4">작가: ${w.writerId} | 득표수: ${w.votes}표</p>
+                    <div class="bg-gray-50 p-4 rounded-2xl border-2 border-dashed">
+                        <p class="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-widest">실시간 코멘트</p>
+                        <div id="res-comm-${d.id}" class="space-y-2 max-h-40 overflow-y-auto"></div>
+                    </div>
+                </div>
+            `;
+            list.appendChild(resDiv);
+            
+            onSnapshot(query(collection(db, `entries/${d.id}/comments`), orderBy("at", "asc")), (cSnap) => {
+                const cBox = document.getElementById(`res-comm-${d.id}`);
+                if(!cBox) return; cBox.innerHTML = "";
+                cSnap.forEach(cDoc => {
+                    const c = cDoc.data();
+                    cBox.innerHTML += `<div class="text-xs"><b>[${c.user}]</b> ${c.text}</div>`;
+                });
+            });
+        }
+    }
+
+    // 단계 전환 시 투표수 초기화 로직 (요청사항 반영)
+    window.updateStage = async (v) => { 
+        if(v === "투표 등록") {
+            if(!confirm("등록 단계를 시작하면 이전 회차의 투표수가 0으로 초기화됩니다. 진행하시겠습니까?")) return;
+            const snap = await getDocs(collection(db, "entries"));
+            for(const d of snap.docs) {
+                await updateDoc(d.ref, { votes: 0 });
+            }
+            const vSnap = await getDocs(collection(db, "votes"));
+            for(const vDoc of vSnap.docs) { await deleteDoc(vDoc.ref); }
+        }
+        await setDoc(doc(db, "system", "config"), { stage: v }); 
+        alert(`이벤트 단계가 [${v}]로 변경되었습니다.`);
+    };
+
+    window.resetAllData = async () => {
+        if(!confirm("⚠️ 경고: 모든 이미지, 순번, 투표 데이터가 완전히 파괴됩니다. 복구 불가능합니다. 계속하시겠습니까?")) return;
+        const snap = await getDocs(collection(db, "entries"));
+        for(const d of snap.docs) {
+            const data = d.data();
+            if(data.storagePath) { try { await deleteObject(ref(storage, data.storagePath)); } catch(e){} }
+            await deleteDoc(d.ref);
+        }
+        const vSnap = await getDocs(collection(db, "votes"));
+        for(const vDoc of vSnap.docs) { await deleteDoc(vDoc.ref); }
+        alert("모든 데이터가 공장 초기화되었습니다.");
+        location.reload();
+    };
+
+    function loadAdminData() {
+        onSnapshot(collection(db, "users"), async (snap) => {
+            const list = document.getElementById('admin-member-list');
+            list.innerHTML = "";
+            const entryRef = collection(db, "entries");
+            
+            // entries를 실시간 구독하여 이미지와 순번 갱신 보장
+            onSnapshot(query(entryRef, orderBy("order", "asc")), (eSnap) => {
+                list.innerHTML = "";
+                const entriesMap = {};
+                eSnap.forEach(ed => entriesMap[ed.id] = ed.data());
+
+                snap.forEach(uDoc => {
+                    const u = uDoc.data(); if(u.id === "infpdavichi") return;
+                    const entry = entriesMap[u.id];
+                    const div = document.createElement('div');
+                    div.className = "p-4 border-2 rounded-2xl bg-white shadow-sm flex flex-col gap-3";
+                    div.innerHTML = `
+                        <div class="flex justify-between items-center border-b pb-2">
+                            <span class="font-bold text-sm">${u.id} (${u.pw})</span>
+                            <button onclick="window.delUser('${u.id}')" class="text-red-500 font-bold text-[10px] border px-2 py-1 rounded">삭제</button>
+                        </div>
+                        ${entry ? `<div class="flex gap-3 items-center bg-blue-50 p-2 rounded-xl"><img src="${entry.url}" class="w-16 h-16 rounded-lg object-cover border-2 border-white shadow"><div class="text-[10px] font-black"><p class="text-blue-600">순번: ${entry.order}</p><p class="truncate w-24">${entry.emojiName}</p></div></div>` : '<p class="text-[10px] text-gray-300 italic text-center py-4">아직 작품이 없습니다</p>'}
+                    `;
+                    list.appendChild(div);
+                });
+            });
+        });
+    }
+
+    window.delUser = async (uid) => {
+        if(!confirm("계정과 모든 활동 기록을 서버에서 즉시 영구 삭제합니까?")) return;
+        const eSnap = await getDoc(doc(db, "entries", uid));
+        if(eSnap.exists()) {
+            const data = eSnap.data();
+            if(data.storagePath) { try { await deleteObject(ref(storage, data.storagePath)); } catch(e){} }
+            await deleteDoc(doc(db, "entries", uid));
+        }
+        await deleteDoc(doc(db, "users", uid));
+    };
+</script>
+</body>
+</html>
