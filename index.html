@@ -13,7 +13,6 @@
         .vote-card.selected { border-color: #2563eb; background: #eff6ff; transform: translateY(-5px); }
         .check-badge { display: none; position: absolute; top: 10px; right: 10px; background: #2563eb; color: white; border-radius: 50%; width: 24px; height: 24px; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; z-index: 10; }
         .vote-card.selected .check-badge { display: flex; }
-
         .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); }
         .modal-content { background: white; margin: auto; padding: 20px; border-radius: 25px; max-width: 90%; max-height: 85vh; overflow-y: auto; text-align: center; position: relative; top: 50%; transform: translateY(-50%); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .step-img { width: auto; max-width: 100%; max-height: 45vh; object-fit: contain; border-radius: 15px; margin: 0 auto 15px auto; border: 1px solid #ddd; display: block; }
@@ -28,7 +27,7 @@
             <input type="text" id="login-id" placeholder="ID" class="w-full border-2 p-4 rounded-xl outline-blue-500">
             <input type="password" id="login-pw" placeholder="Password" class="w-full border-2 p-4 rounded-xl outline-blue-500">
             <button onclick="handleLogin()" class="w-full bg-blue-600 text-white p-4 rounded-xl font-black text-xl hover:bg-blue-700 shadow-lg">접속하기</button>
-            <button onclick="showPage('page-register')" class="w-full text-gray-400 text-sm">처음이신가요? 회원가입</button>
+            <button onclick="showPage('page-register')" class="w-full text-gray-400 text-sm">회원가입</button>
         </div>
     </div>
 
@@ -55,9 +54,10 @@
             <h1 class="text-2xl font-black text-red-600">ADMIN CONTROL</h1>
             <button onclick="logout()" class="bg-red-600 text-white px-6 py-2 rounded-xl font-bold">LOGOUT</button>
         </div>
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
             <div class="lg:col-span-1 bg-white p-5 rounded-2xl shadow border-2">
-                <h3 class="font-black mb-3 text-blue-700 underline">단계 설정 및 데이터 초기화</h3>
+                <h3 class="font-black mb-3 text-blue-700 underline">단계 설정</h3>
                 <select id="stage-select" onchange="updateStage(this.value)" class="w-full border-4 border-blue-500 p-4 rounded-xl font-black text-lg bg-blue-50 mb-4 outline-none">
                     <option value="이벤트 대기">이벤트 대기</option>
                     <option value="투표 등록">투표 등록</option>
@@ -66,12 +66,17 @@
                     <option value="투표 마감">투표 마감</option>
                     <option value="투표 결산">투표 결산</option>
                 </select>
-                <button onclick="resetAllData()" class="w-full bg-red-100 text-red-600 p-3 rounded-lg font-bold border-2 border-red-200 hover:bg-red-600 hover:text-white transition">모든 기록 강제 초기화</button>
+                <button onclick="resetAllData()" class="w-full bg-red-100 text-red-600 p-3 rounded-lg font-bold border-2 border-red-200 hover:bg-red-600 hover:text-white transition">데이터 전체 초기화</button>
             </div>
-            <div class="lg:col-span-2 bg-white p-5 rounded-2xl shadow border-2 overflow-y-auto max-h-[600px]">
+            <div class="lg:col-span-2 bg-white p-5 rounded-2xl shadow border-2 overflow-y-auto max-h-[400px]">
                 <h3 class="font-black mb-4 text-red-600 border-b pb-2 text-center">실시간 등록 현황</h3>
                 <div id="admin-member-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
             </div>
+        </div>
+
+        <div class="mt-10 bg-white p-6 rounded-3xl border-4 border-dashed border-gray-200">
+            <h3 class="text-2xl font-black text-center mb-8 text-gray-700">🔍 실시간 결산 및 코멘트 관리 (미리보기)</h3>
+            <div id="admin-result-preview" class="space-y-8"></div>
         </div>
     </div>
 </div>
@@ -96,6 +101,7 @@
     let currentUser = null;
     let selectedIds = [];
 
+    // 튜토리얼 데이터
     let currentStep = 0;
     const tutorialData = [
         { img: "KakaoTalk_20260509_153032930.jpg", text: "1. 프로필 편집에서 <br><b>'커스텀 프로필 만들기'</b>를 선택!" },
@@ -159,6 +165,7 @@
         }
     }
 
+    // 튜토리얼 제어
     window.openTutorial = () => { currentStep = 0; document.getElementById('tutorialModal').style.display = 'block'; updateTutorial(); };
     window.closeTutorial = () => { document.getElementById('tutorialModal').style.display = 'none'; };
     function updateTutorial() {
@@ -171,6 +178,7 @@
         document.getElementById('prevBtn').onclick = () => { if (currentStep > 0) { currentStep--; updateTutorial(); } };
     }
 
+    // 업로드/삭제
     window.handleUpload = async () => {
         const name = document.getElementById('up-name').value;
         const file = document.getElementById('up-file').files[0];
@@ -184,7 +192,6 @@
         await setDoc(doc(db, "entries", currentUser.id), { writerId: currentUser.id, emojiName: name, url: url, storagePath: path, votes: 0, order: snap.size + 1, updatedAt: serverTimestamp() });
         alert("작품 등록 완료!"); refreshUI("투표 등록");
     };
-
     window.deleteMyWork = async () => {
         if(!confirm("작품을 삭제하시겠습니까?")) return;
         const refEntry = doc(db, "entries", currentUser.id);
@@ -197,6 +204,7 @@
         }
     };
 
+    // 투표 화면
     async function renderVotePage(container) {
         const snap = await getDocs(query(collection(db, "entries"), orderBy("order", "asc")));
         const vSnap = await getDocs(query(collection(db, "votes"), where("voterId", "==", currentUser.id)));
@@ -241,56 +249,44 @@
         };
     }
 
-    async function renderResultPage(container) {
-        const snap = await getDocs(query(collection(db, "entries"), orderBy("votes", "desc")));
-        container.innerHTML = `<h2 class="text-4xl font-black text-center mb-10 underline underline-offset-8 text-gray-800">🏆 최종 랭킹 결과</h2><div id="result-list" class="space-y-12"></div>`;
-        const list = document.getElementById('result-list');
-        let rank = 1;
-
-        for (const d of snap.docs) {
-            const w = d.data();
-            const resDiv = document.createElement('div');
-            resDiv.className = "bg-white p-6 rounded-[2.5rem] shadow-xl border-2 flex flex-col md:flex-row gap-6 items-start";
-            resDiv.innerHTML = `<div class="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xl shadow-lg">${rank++}위</div><img src="${w.url}" class="w-40 h-40 object-cover rounded-3xl border-4 border-gray-100 shadow-inner"><div class="flex-1 w-full"><h3 class="text-2xl font-black mb-1">${w.emojiName}</h3><p class="text-blue-600 font-bold mb-4">작가: ${w.writerId} | 득표수: ${w.votes}표</p><div class="bg-gray-50 p-4 rounded-2xl border-2 border-dashed"><p class="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-widest">실시간 코멘트</p><div id="res-comm-${d.id}" class="space-y-2 max-h-40 overflow-y-auto"></div></div></div>`;
-            list.appendChild(resDiv);
-
-            onSnapshot(query(collection(db, `entries/${d.id}/comments`), orderBy("at", "asc")), (cSnap) => {
-                const cBox = document.getElementById(`res-comm-${d.id}`);
-                if(!cBox) return; cBox.innerHTML = "";
-                cSnap.forEach(cDoc => {
-                    const c = cDoc.data(); const cId = cDoc.id;
-                    const cDiv = document.createElement('div');
-                    cDiv.className = "text-xs flex justify-between items-center";
-                    const delBtn = (currentUser && currentUser.role === 'admin') ? `<button onclick="deleteComment('${d.id}', '${cId}')" class="ml-2 text-red-400 font-bold">[삭제]</button>` : "";
-                    cDiv.innerHTML = `<span><b>[${c.user}]</b> ${c.text}</span> ${delBtn}`;
-                    cBox.appendChild(cDiv);
+    // 결산 화면 함수 (공용)
+    async function renderResultPage(container, isAdmin = false) {
+        onSnapshot(query(collection(db, "entries"), orderBy("votes", "desc")), (snap) => {
+            container.innerHTML = `<h2 class="text-4xl font-black text-center mb-10 underline underline-offset-8 text-gray-800">${isAdmin ? "📊 실시간 집계 현황" : "🏆 최종 랭킹 결과"}</h2><div id="${isAdmin ? 'admin-res-list' : 'result-list'}" class="space-y-12"></div>`;
+            const list = document.getElementById(isAdmin ? 'admin-res-list' : 'result-list');
+            let rank = 1;
+            snap.forEach(d => {
+                const w = d.data();
+                const resDiv = document.createElement('div');
+                resDiv.className = "bg-white p-6 rounded-[2.5rem] shadow-xl border-2 flex flex-col md:flex-row gap-6 items-start";
+                resDiv.innerHTML = `<div class="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xl shadow-lg">${rank++}위</div><img src="${w.url}" class="w-40 h-40 object-cover rounded-3xl border-4 border-gray-100 shadow-inner"><div class="flex-1 w-full"><h3 class="text-2xl font-black mb-1">${w.emojiName}</h3><p class="text-blue-600 font-bold mb-4">작가: ${w.writerId} | 득표수: ${w.votes}표</p><div class="bg-gray-50 p-4 rounded-2xl border-2 border-dashed"><p class="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-widest">실시간 코멘트</p><div id="res-comm-${isAdmin ? 'adm-' : ''}${d.id}" class="space-y-2 max-h-40 overflow-y-auto"></div></div></div>`;
+                list.appendChild(resDiv);
+                
+                onSnapshot(query(collection(db, `entries/${d.id}/comments`), orderBy("at", "asc")), (cSnap) => {
+                    const cBox = document.getElementById(`res-comm-${isAdmin ? 'adm-' : ''}${d.id}`);
+                    if(!cBox) return; cBox.innerHTML = "";
+                    cSnap.forEach(cDoc => {
+                        const c = cDoc.data(); const cId = cDoc.id;
+                        const cDiv = document.createElement('div');
+                        cDiv.className = "text-xs flex justify-between items-center py-1 border-b border-gray-100 last:border-0";
+                        const delBtn = (currentUser && currentUser.role === 'admin') ? `<button onclick="deleteComment('${d.id}', '${cId}')" class="ml-2 text-red-400 font-bold hover:text-red-600 transition">[삭제]</button>` : "";
+                        cDiv.innerHTML = `<span><b>[${c.user}]</b> ${c.text}</span> ${delBtn}`;
+                        cBox.appendChild(cDiv);
+                    });
                 });
             });
-        }
+        });
     }
 
+    // 관리자 코멘트 삭제
     window.deleteComment = async (eId, cId) => {
-        if(!confirm("삭제하시겠습니까?")) return;
+        if(!confirm("이 코멘트를 정말 삭제하시겠습니까?")) return;
         await deleteDoc(doc(db, `entries/${eId}/comments`, cId));
     };
 
-    window.updateStage = async (v) => { 
-        if(v === "투표 등록" && !confirm("모든 득표수가 초기화됩니다.")) return;
-        await setDoc(doc(db, "system", "config"), { stage: v }); 
-        alert(`단계가 [${v}]로 변경되었습니다.`);
-    };
-
-    window.resetAllData = async () => {
-        if(!confirm("모든 데이터를 삭제합니다.")) return;
-        const snap = await getDocs(collection(db, "entries"));
-        for(const d of snap.docs) {
-            const data = d.data(); if(data.storagePath) { try { await deleteObject(ref(storage, data.storagePath)); } catch(e){} }
-            await deleteDoc(d.ref);
-        }
-        alert("초기화 완료"); location.reload();
-    };
-
+    // 관리자 데이터 로드
     function loadAdminData() {
+        // 1. 멤버 관리 리스트
         onSnapshot(collection(db, "users"), (snap) => {
             const list = document.getElementById('admin-member-list');
             onSnapshot(query(collection(db, "entries"), orderBy("order", "asc")), (eSnap) => {
@@ -306,7 +302,37 @@
                 });
             });
         });
+        // 2. 실시간 결산 미리보기 실행
+        const adminPreview = document.getElementById('admin-result-preview');
+        renderResultPage(adminPreview, true);
     }
+
+    // 단계 변경
+    window.updateStage = async (v) => { 
+        if(v === "투표 등록" && !confirm("모든 득표수와 코멘트가 초기화됩니다.")) return;
+        if(v === "투표 등록") {
+            const snap = await getDocs(collection(db, "entries"));
+            for(const d of snap.docs) {
+                await updateDoc(d.ref, { votes: 0 });
+                const cSnap = await getDocs(collection(db, `entries/${d.id}/comments`));
+                for(const cDoc of cSnap.docs) { await deleteDoc(cDoc.ref); }
+            }
+            const vSnap = await getDocs(collection(db, "votes"));
+            for(const vDoc of vSnap.docs) { await deleteDoc(vDoc.ref); }
+        }
+        await setDoc(doc(db, "system", "config"), { stage: v }); 
+        alert(`단계가 [${v}]로 변경되었습니다.`);
+    };
+
+    window.resetAllData = async () => {
+        if(!confirm("모든 데이터를 삭제합니다.")) return;
+        const snap = await getDocs(collection(db, "entries"));
+        for(const d of snap.docs) {
+            const data = d.data(); if(data.storagePath) { try { await deleteObject(ref(storage, data.storagePath)); } catch(e){} }
+            await deleteDoc(d.ref);
+        }
+        alert("초기화 완료"); location.reload();
+    };
 
     window.delUser = async (uid) => {
         if(!confirm("유저를 삭제하시겠습니까?")) return;
